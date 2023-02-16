@@ -60,3 +60,52 @@ spark = SparkSession.builder.appName("project3").getOrCreate()
 responseCodeToCountRow = responseCodeToCount.map(lambda x: Row(response_code=x[0], count=x[1]))
 responseCodeToCountDF = spark.createDataFrame(responseCodeToCountRow)
 responseCodeToCountDF.write.csv("responseCodeToCountDF.csv", header=True)
+
+# Any hosts that has accessed the server more than 10 times.
+hostCountPairTuple = access_logs.map(lambda log: (log.host, 1))
+
+hostSum = hostCountPairTuple.reduceByKey(lambda a, b : a + b)
+
+hostMoreThan10 = hostSum.filter(lambda s: s[1] > 10)
+
+hostsPick20 = (hostMoreThan10
+               .map(lambda s: s[0])
+               .take(20))
+
+print ('Any 20 hosts that have accessed more then 10 times: %s' % hostsPick20)
+
+# (2e) Example: Visualizing Endpoints
+endpoints = (access_logs
+             .map(lambda log: (log.endpoint, 1))
+             .reduceByKey(lambda a, b : a + b)
+             .cache())
+ends = endpoints.map(lambda x: x[0]).collect()
+counts = endpoints.map(lambda x: y[1]).collect()
+
+fig = plt.figure(figsize=(8,4.2), facecolor='white', edgecolor='white')
+plt.axis([0, len(ends), 0, max(counts)])
+plt.grid(b=True, which='major', axis='y')
+plt.xlabel('Endpoints')
+plt.ylabel('Number of Hits')
+plt.plot(counts)
+plt.savefig("2e.png") 
+
+# Create an RDD with Row objects
+spark = SparkSession.builder.appName("project3").getOrCreate()
+
+endpoint_counts_rdd = endpoints.map(lambda s: Row(endpoint = s[0], num_hits = s[1]))
+endpoint_counts_schema_rdd = spark.createDataFrame(endpoint_counts_rdd)
+
+# Display a plot of the distribution of the number of hits across the endpoints.
+responseCodeToCountDF.write.csv("responseCodeToCountDF.csv", header=True)
+
+# (2f) Example: Top Endpoints
+# Top Endpoints
+endpointCounts = (access_logs
+                  .map(lambda log: (log.endpoint, 1))
+                  .reduceByKey(lambda a, b : a + b))
+
+topEndpoints = endpointCounts.takeOrdered(10, lambda s: -1 * s[1])
+
+print('Top Ten Endpoints: %s' % topEndpoints)
+assert topEndpoints == [(u'/images/NASA-logosmall.gif', 59737), (u'/images/KSC-logosmall.gif', 50452), (u'/images/MOSAIC-logosmall.gif', 43890), (u'/images/USA-logosmall.gif', 43664), (u'/images/WORLD-logosmall.gif', 43277), (u'/images/ksclogo-medium.gif', 41336), (u'/ksc.html', 28582), (u'/history/apollo/images/apollo-logo1.gif', 26778), (u'/images/launch-logo.gif', 24755), (u'/', 20292)], 'incorrect Top Ten Endpoints'
