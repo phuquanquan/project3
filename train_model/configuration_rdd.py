@@ -1,9 +1,12 @@
 import sys
 import os
-from test_helper import Test
+from pyspark import SparkContext
+from parsing import parseApacheLogLine
 
-baseDir = os.path.join('databricks-datasets')
-inputPath = os.path.join('cs100', 'lab2', 'data-001', 'apache.access.log.PROJECT')
+sc = SparkContext("local[2]", "project3")
+
+baseDir = os.path.join('project3')
+inputPath = os.path.join('data', 'NASA_access_log_Jul95')
 logFile = os.path.join(baseDir, inputPath)
 
 def parseLogs():
@@ -23,12 +26,9 @@ def parseLogs():
                    .map(lambda s: s[0]))
     failed_logs_count = failed_logs.count()
     if failed_logs_count > 0:
-        print 'Number of invalid logline: %d' % failed_logs.count()
+        print('Number of invalid logline: %d' % failed_logs.count())
         for line in failed_logs.take(20):
-            print 'Invalid logline: %s' % line
+            print('Invalid logline: %s' % line)
 
-    print 'Read %d lines, successfully parsed %d lines, failed to parse %d lines' % (parsed_logs.count(), access_logs.count(), failed_logs.count())
+    print('Read %d lines, successfully parsed %d lines, failed to parse %d lines' % (parsed_logs.count(), access_logs.count(), failed_logs.count()))
     return parsed_logs, access_logs, failed_logs
-
-
-parsed_logs, access_logs, failed_logs = parseLogs()

@@ -3,6 +3,8 @@ import datetime
 
 from pyspark.sql import Row
 
+APACHE_ACCESS_LOG_PATTERN = '^(\S+) (\S+) (\S+) \[([\w:/]+\s[+\-]\d{4})\] "(\S+) (\S+)\s*(\S*)" (\d{3}) (\S+)'
+
 month_map = {'Jan': 1, 'Feb': 2, 'Mar':3, 'Apr':4, 'May':5, 'Jun':6, 'Jul':7,
     'Aug':8,  'Sep': 9, 'Oct':10, 'Nov': 11, 'Dec': 12}
 
@@ -34,9 +36,9 @@ def parseApacheLogLine(logline):
         return (logline, 0)
     size_field = match.group(9)
     if size_field == '-':
-        size = long(0)
+        size = int(0)
     else:
-        size = long(match.group(9))
+        size = int(match.group(9))
     return (Row(
         host          = match.group(1),
         client_identd = match.group(2),
