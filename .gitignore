@@ -17,3 +17,6 @@ dist
 
 # VSCode
 .vscode
+
+# python
+*.pyc
