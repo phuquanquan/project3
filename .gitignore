@@ -1,6 +1,5 @@
 /venv/
 /client/node_modules/
-/data/
 __pycache__
 
 # builds
@@ -20,3 +19,6 @@ dist
 
 # python
 *.pyc
+
+# File
+logs.txt

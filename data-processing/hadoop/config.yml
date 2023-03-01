@@ -1,0 +1,4 @@
+job_name: LogProcessor
+input_path: log_processing/input
+output_path: log_processing/output
+jar_file: job.jar

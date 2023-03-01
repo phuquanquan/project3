@@ -1,0 +1,6 @@
+# Config for Spark job
+spark:
+  app_name: nasa_log_processing
+  master: local[*]
+  batch_duration: 10
+  checkpoint_directory: /tmp/checkpoints

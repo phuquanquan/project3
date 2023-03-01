@@ -1,0 +1,9 @@
+kafka:
+  broker_host: localhost
+  broker_port: 9092
+  topic_name: nasa_logs
+  producer:
+    compression_type: gzip
+    value_serializer: org.apache.kafka.common.serialization.StringSerializer
+  consumer:
+    value_deserializer: org.apache.kafka.common.serialization.StringDeserializer
