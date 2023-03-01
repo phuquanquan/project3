@@ -1,8 +1,12 @@
 from happybase import Connection, ConnectionPool
-import os
+import yaml
 
-HBASE_HOST = os.environ.get("HBASE_HOST")
-HBASE_TABLE_NAME = os.environ.get("HBASE_TABLE_NAME")
+with open('config/config.yml') as f:
+    config = yaml.safe_load(f)
+
+HBASE_HOST = config['hbase']['host']
+HBASE_PORT = config['hbase']['port']
+HBASE_TABLE_NAME = config['hbase']['table_name']
 
 class HBaseHelper:
     def __init__(self):
@@ -11,5 +15,6 @@ class HBaseHelper:
     def write_to_hbase(self, rows):
         with self.connection_pool.connection() as conn:
             table = conn.table(HBASE_TABLE_NAME)
-            for row in rows:
-                table.put(row['row_key'], row)
+            with table.batch() as batch:
+                for row in rows:
+                    batch.put(row['row_key'], row)

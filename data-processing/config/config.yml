@@ -1,17 +1,19 @@
 # Kafka configuration
 kafka:
   broker_url: localhost:9092
-  topic_name: my_topic
+  topic_name: topic_project3
 
 # Spark configuration
 spark:
   master: local[*]
+  log_level: WARN
+  batch_interval: 10
 
 # HBase configuration
 hbase:
   host: localhost
   port: 9090
-  table_name: my_table
+  table_name: table_project3
 
 # Log files configuration
 log_files:

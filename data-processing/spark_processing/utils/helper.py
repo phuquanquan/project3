@@ -1,21 +1,53 @@
 import re
+import datetime
+
+from pyspark.sql import Row
 
 # Regular expression to extract fields from log line
-regex_pattern = '^(\S+) (\S+) (\S+) \[(.*?)\] "(.*?)" (\S+) (\S+|-)(?: "(.*?)")?(?: "(.*?)")?'
+APACHE_ACCESS_LOG_PATTERN = '^(\S+) (\S+) (\S+) \[([\w:/]+\s[+\-]\d{4})\] "(\S+) (\S+)\s*(\S*)" (\d{3}) (\S+)'
+
+month_map = {'Jan': 1, 'Feb': 2, 'Mar':3, 'Apr':4, 'May':5, 'Jun':6, 'Jul':7,
+    'Aug':8,  'Sep': 9, 'Oct':10, 'Nov': 11, 'Dec': 12}
+
+def parse_apache_time(s):
+    """ Convert Apache time format into a Python datetime object
+    Args:
+        s (str): date and time in Apache time format
+    Returns:
+        datetime: datetime object (ignore timezone for now)
+    """
+    return datetime.datetime(int(s[7:11]),
+                             month_map[s[3:6]],
+                             int(s[0:2]),
+                             int(s[12:14]),
+                             int(s[15:17]),
+                             int(s[18:20]))
 
 # Function to parse log line into fields
-def parse_log_line(line):
-    match = re.search(regex_pattern, line)
-    if not match:
-        return None
-    return {
-        'ip': match.group(1),
-        'client': match.group(2),
-        'user': match.group(3),
-        'datetime': match.group(4),
-        'request': match.group(5),
-        'status': match.group(6),
-        'size': match.group(7),
-        'referer': match.group(8),
-        'user_agent': match.group(9)
-    }
+def parseApacheLogLine(logline):
+    """ Parse a line in the Apache Common Log format
+    Args:
+        logline (str): a line of text in the Apache Common Log format
+    Returns:
+        tuple: either a dictionary containing the parts of the Apache Access Log and 1,
+               or the original invalid log line and 0
+    """
+    match = re.search(APACHE_ACCESS_LOG_PATTERN, logline)
+    if match is None:
+        return (logline, 0)
+    size_field = match.group(9)
+    try:
+        size = int(size_field)
+    except ValueError:
+        size = 0
+    return (Row(
+        host          = match.group(1),
+        client_identd = match.group(2),
+        user_id       = match.group(3),
+        date_time     = parse_apache_time(match.group(4)),
+        method        = match.group(5),
+        endpoint      = match.group(6),
+        protocol      = match.group(7),
+        response_code = int(match.group(8)),
+        content_size  = size
+    ), 1)
