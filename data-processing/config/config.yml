@@ -1,0 +1,22 @@
+# Kafka configuration
+kafka:
+  broker_url: localhost:9092
+  topic_name: my_topic
+
+# Spark configuration
+spark:
+  master: local[*]
+
+# HBase configuration
+hbase:
+  host: localhost
+  port: 9090
+  table_name: my_table
+
+# Log files configuration
+log_files:
+  dir_path: /path/to/log/files
+
+# Processed data configuration
+processed_data:
+  dir_path: /path/to/processed/data

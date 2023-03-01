@@ -1,3 +1,0 @@
-hbase:
-  host: localhost
-  port: 2181
