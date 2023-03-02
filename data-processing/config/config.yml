@@ -1,12 +1,17 @@
-hadoop:
-  input_path: /project3/data_processing/hadoop_processing/hadoop_input
-  output_path: /project3/data_processing/hadoop_processing/hadoop_output
-  log_file_path: /project3/data_processing/log_files/input.log
+hdfs:
+  host: localhost
+  port: 9000
+  path: "/web_logs/"
+  user: tpquan
 
 # Kafka configuration
 kafka:
   broker_url: localhost:9092
-  topic_name: topic_project3
+  topic_name: web_logging
+  compression_type = "gzip"
+  batch_size: 16*1024
+  linger_ms: 10
+  acks: 1
 
 # Spark configuration
 spark:
@@ -18,4 +23,13 @@ spark:
 hbase:
   host: localhost
   port: 9090
-  table_name: table_project3
+  table_name: web_logs_summary
+  column_family: logs
+
+# Log files configuration
+log_files:
+  dir_path: /project3/data_processing/log_files/NASA_access_log_Jul95.gz
+
+# Processed data configuration
+processed_data:
+  dir_path: /project3/data_processing/processed_data
