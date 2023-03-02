@@ -5,10 +5,12 @@ from pyspark.streaming.kafka import KafkaUtils
 import yaml
 import happybase
 
+
 def read_config():
     with open("data_processing/config/config.yml", 'r') as ymlfile:
-        cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
+        cfg = yaml.safe_load(ymlfile)
     return cfg
+
 
 def connect_to_hbase():
     # read configuration file
@@ -27,6 +29,7 @@ def connect_to_hbase():
     # return table instance
     return connection.table(table_name)
 
+
 def start_consumer():
     # read configuration file
     cfg = read_config()
@@ -37,8 +40,8 @@ def start_consumer():
     ssc = StreamingContext(sc, cfg['spark']['batch_interval'])
 
     # set up Kafka Consumer
-    kafka_params = {"metadata.broker.list": cfg['kafka']['broker_list']}
-    kafka_topic = cfg['kafka']['topic']
+    kafka_params = {"metadata.broker.list": cfg['kafka']['broker_url']}
+    kafka_topic = cfg['kafka']['topic_name']
     stream = KafkaUtils.createDirectStream(ssc, [kafka_topic], kafka_params)
 
     # process each RDD
@@ -47,6 +50,7 @@ def start_consumer():
     # start the Streaming context
     ssc.start()
     ssc.awaitTermination()
+
 
 def process_rdd(rdd, table):
     # filter out empty lines
@@ -59,6 +63,7 @@ def process_rdd(rdd, table):
 
     # save the processed data to HBase
     fields.foreach(lambda parts: save_to_hbase(parts, table))
+
 
 def save_to_hbase(parts, table):
     # Parse log line
@@ -88,6 +93,7 @@ def save_to_hbase(parts, table):
 
     # Insert row into HBase table
     table.put(row_key, values)
+
 
 if __name__ == "__main__":
     start_consumer()

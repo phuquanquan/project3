@@ -46,7 +46,7 @@ def clean_logs(logs_df):
 
 def convert_datetime(logs_df):
     # Convert datetime string to TimestampType
-    logs_df = logs_df.withColumn('date_time', F.to_timestamp(logs_df.datetime, 'dd/MMM/yyyy:HH:mm:ss Z'))
+    return logs_df.withColumn('date_time', F.to_timestamp(logs_df.datetime, 'dd/MMM/yyyy:HH:mm:ss Z'))
 
 def write_to_hbase(logs_df):
     # Write to HBase

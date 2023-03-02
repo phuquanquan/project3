@@ -1,3 +1,8 @@
+hadoop:
+  input_path: /project3/data_processing/hadoop_processing/hadoop_input
+  output_path: /project3/data_processing/hadoop_processing/hadoop_output
+  log_file_path: /project3/data_processing/log_files/input.log
+
 # Kafka configuration
 kafka:
   broker_url: localhost:9092
@@ -14,11 +19,3 @@ hbase:
   host: localhost
   port: 9090
   table_name: table_project3
-
-# Log files configuration
-log_files:
-  dir_path: /path/to/log/files
-
-# Processed data configuration
-processed_data:
-  dir_path: /path/to/processed/data
