@@ -1,7 +1,7 @@
 /venv/
 /client/node_modules/
 __pycache__
-/train_model/
+
 # builds
 build
 dist
