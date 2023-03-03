@@ -1,17 +1,32 @@
-from pyspark.sql import SparkSession
+import yaml
+from pyspark import SparkContext, SparkConf
 import happybase
+from parse_log_line import parseApacheLogLine
 from analysis_results import AnalysisResults
 
-# Define constants
-HBASE_TABLE_NAME = "web_logs"
-HBASE_HOST = "localhost"
-HBASE_PORT = 9090
-CF_ANALYSIS_RESULTS = "analysis_results"
+with open('../config/config.yml', 'r') as f:
+    cfg =  yaml.safe_load(f)
 
-# Create a connection to HBase
+hbase_config = cfg['hbase']
+# Define constants
+HBASE_TABLE_NAME = hbase_config['table_name']
+HBASE_HOST = hbase_config['host']
+HBASE_PORT = hbase_config['port']
+CF_ANALYSIS_RESULTS = hbase_config['cf_analysis_results']
+
+    # Create a connection to HBase
 connection = happybase.Connection(HBASE_HOST, port=HBASE_PORT)
 
-# Define functions for HBase operations
+
+def create_spark_context(app_name='MyAppName', master='local[*]'):
+    """
+    Create a new SparkContext with the given app name and master URL.
+    """
+    conf = SparkConf().setAppName(app_name).setMaster(master)
+    sc = SparkContext.getOrCreate(conf=conf)
+    return sc
+
+
 def put_row_to_hbase(row_key, analysis_results):
     """
     Store the analysis results for a single row to HBase.
@@ -21,116 +36,229 @@ def put_row_to_hbase(row_key, analysis_results):
         f"{CF_ANALYSIS_RESULTS}:num_requests".encode(): str(analysis_results.num_requests).encode(),
         f"{CF_ANALYSIS_RESULTS}:num_successful_requests".encode(): str(analysis_results.num_successful_requests).encode(),
         f"{CF_ANALYSIS_RESULTS}:num_failed_requests".encode(): str(analysis_results.num_failed_requests).encode(),
+        f"{CF_ANALYSIS_RESULTS}:content_sizes_avg".encode(): str(analysis_results.content_sizes_avg).encode(),
+        f"{CF_ANALYSIS_RESULTS}:content_size_min".encode(): str(analysis_results.content_size_min).encode(),
+        f"{CF_ANALYSIS_RESULTS}:content_size_max".encode(): str(analysis_results.content_size_max).encode(),
+        f"{CF_ANALYSIS_RESULTS}:unique_host_count".encode(): str(analysis_results.unique_host_count).encode(),
+        f"{CF_ANALYSIS_RESULTS}:bad_records".encode(): str(analysis_results.bad_records).encode(),
         f"{CF_ANALYSIS_RESULTS}:http_codes".encode(): str(analysis_results.http_codes).encode(),
-        f"{CF_ANALYSIS_RESULTS}:http_methods".encode(): str(analysis_results.http_methods).encode(),
-        f"{CF_ANALYSIS_RESULTS}:ip_address_access_count".encode(): str(analysis_results.ip_address_access_count).encode(),
-        f"{CF_ANALYSIS_RESULTS}:http_method_success_count".encode(): str(analysis_results.http_method_success_count).encode(),
-        f"{CF_ANALYSIS_RESULTS}:http_method_failure_count".encode(): str(analysis_results.http_method_failure_count).encode(),
-        f"{CF_ANALYSIS_RESULTS}:ip_address_success_count".encode(): str(analysis_results.ip_address_success_count).encode(),
-        f"{CF_ANALYSIS_RESULTS}:ip_address_failure_count".encode(): str(analysis_results.ip_address_failure_count).encode(),
-        f"{CF_ANALYSIS_RESULTS}:total_response_time".encode(): str(analysis_results.total_response_time).encode(),
-        f"{CF_ANALYSIS_RESULTS}:num_successful_requests_with_response_time".encode(): str(analysis_results.num_successful_requests_with_response_time).encode()
+        f"{CF_ANALYSIS_RESULTS}:endpoints".encode(): str(analysis_results.endpoints).encode(),
+        f"{CF_ANALYSIS_RESULTS}:top_ten_rrr_URLs".encode(): str(analysis_results.top_ten_rrr_URLs).encode(),
+        f"{CF_ANALYSIS_RESULTS}:daily_hosts_list".encode(): str(analysis_results.daily_hosts_list).encode(),
+        f"{CF_ANALYSIS_RESULTS}:avg_daily_req_per_host_list".encode(): str(analysis_results.avg_daily_req_per_host_list).encode(),
+        f"{CF_ANALYSIS_RESULTS}:bad_unique_endpoints_pick_40".encode(): str(analysis_results.bad_unique_endpoints_pick_40).encode(),
+        f"{CF_ANALYSIS_RESULTS}:bad_endpoints_top_20".encode(): str(analysis_results.bad_endpoints_top_20).encode(),
+        f"{CF_ANALYSIS_RESULTS}:err_hosts_top_25".encode(): str(analysis_results.err_hosts_top_25).encode(),
+        f"{CF_ANALYSIS_RESULTS}:err_by_date".encode(): str(analysis_results.err_by_date).encode(),
+        f"{CF_ANALYSIS_RESULTS}:err_hour_list".encode(): str(analysis_results.err_hour_list).encode()
     })
 
-def parse_request_line(request_line):
-    """
-    Parse a single line from the log file and extract the relevant fields.
-    """
-    split_line = request_line.split()
-    ip_address = split_line[0]
-    method = split_line[5].replace('"', '')
-    url = split_line[6]
-    http_version = split_line[7].replace('"', '')
-    status_code = int(split_line[8])
-    response_size = int(split_line[9])
-    return (ip_address, {
-        "method": method,
-        "url": url,
-        "http_version": http_version,
-        "status_code": status_code,
-        "response_size": response_size
-    })
+def parseLogs(sc, hdfs_path, analysis_results):
+    """ Read and parse log file """
+    parsed_logs = (sc
+                   .textFile(hdfs_path)
+                   .map(parseApacheLogLine)
+                   .cache())
 
-def analyze_logs(logs):
+    access_logs = (parsed_logs
+                   .filter(lambda s: s[1] == 1)
+                   .map(lambda s: s[0])
+                   .cache())
+
+    failed_logs = (parsed_logs
+                   .filter(lambda s: s[1] == 0)
+                   .map(lambda s: s[0]))
+    
+    analysis_results.update_num_requests(parsed_logs.count())
+    analysis_results.update_num_successful_requests(access_logs.count())
+    analysis_results.update_num_failed_requests(failed_logs.count())
+
+    return parsed_logs, access_logs, failed_logs
+
+def analyze_sample(access_logs, analysis_results):
+    """ Calculate statistics based on the content size."""
+    content_sizes = access_logs.map(lambda log: log.content_size).cache()
+    analysis_results.update_content_sizes_avg(content_sizes.reduce(lambda a, b : a + b) / content_sizes.count())
+    analysis_results.update_content_sizes_min(content_sizes.min())
+    analysis_results.update_content_sizes_max(content_sizes.max())
+
+
+    """ Response Code to Count """
+    responseCodeToCount = (access_logs
+                        .map(lambda log: (log.response_code, 1))
+                        .reduceByKey(lambda a, b : a + b)
+                        .cache())
+    analysis_results.update_http_code(responseCodeToCount.take(100)) 
+
+    """ Any hosts that has accessed the server more than 10 times.""" 
+    hostCountPairTuple = access_logs.map(lambda log: (log.host, 1))
+
+    hostSum = hostCountPairTuple.reduceByKey(lambda a, b : a + b)
+
+    hostMoreThan10 = hostSum.filter(lambda s: s[1] > 10)
+    analysis_results.update_host_more_than_10(hostMoreThan10) 
+
+    """ Visualizing Endpoints"""
+    endpoints = (access_logs
+             .map(lambda log: (log.endpoint, 1))
+             .reduceByKey(lambda a, b : a + b)
+             .cache())
+    analysis_results.update_endpoints(endpoints) 
+
+def analyze_logs(access_logs, analysis_results):
+    """" Top Ten Error Endpoints """
+    not200 = (access_logs
+        .filter(lambda log: log.response_code != 200))
+
+    endpointCountPairTuple = (not200
+                        .map(lambda log: (log.endpoint, 1)))
+
+    endpointSum = (endpointCountPairTuple
+                .reduceByKey(lambda a, b : a + b))
+
+    topTenErrURLs = (endpointSum
+                    .takeOrdered(10, lambda s: -1 * s[1]))
+    analysis_results.update_top_ten_rrr_URLs(topTenErrURLs) 
+
+    """Number of Unique Hosts"""
+    hosts = (access_logs
+         .map(lambda log: log.host))
+
+    uniqueHosts = (hosts
+                .distinct())
+
+    uniqueHostCount = (uniqueHosts
+                    .count())
+    analysis_results.update_unique_host_count(uniqueHostCount) 
+
+    """Number of Unique Daily Hosts"""
+    dayToHostPairTuple = (access_logs
+                        .map(lambda log: (log.date_time.day, log.host)))
+
+    dayGroupedHosts = (dayToHostPairTuple
+                    .groupByKey())
+
+    dayHostCount = (dayGroupedHosts
+                .map(lambda s: (s[0], len(set(s[1])))))
+
+    dailyHosts = (dayHostCount
+                .sortByKey()
+                .cache())
+    dailyHostsList = (dailyHosts
+                  .take(30))
+    analysis_results.update_daily_hosts(dailyHostsList) 
+
+    """Average Number of Daily Requests per Hosts"""
+    dayAndHostTuple = (access_logs
+                   .map(lambda log: (log.date_time.day, log.host)))
+
+    groupedByDay = (dayAndHostTuple
+                    .groupByKey())
+
+    sortedByDay = (groupedByDay
+                .sortByKey())
+
+    avgDailyReqPerHost = (sortedByDay
+                        .map(lambda (d, h): (d, len(h)/len(set(h))))
+                        .cache())
+
+    avgDailyReqPerHostList = (avgDailyReqPerHost
+                            .take(30))
+    
+    analysis_results.update_avg_daily_req_per_host_list(avgDailyReqPerHostList) 
+
+def exploring_404_res(access_logs, analysis_results):
+    """Counting 404 Response Codes"""
+    badRecords = (access_logs
+              .filter(lambda log: log.response_code == 404)
+              .cache())
+    
+    analysis_results.update_bad_records(badRecords.count()) 
+    
+    """Listing 404 Response Code Records"""
+    badEndpoints = (badRecords
+                .map(lambda log: log.endpoint))
+
+    badUniqueEndpoints = (badEndpoints
+                        .distinct())
+
+    badUniqueEndpointsPick40 = (badUniqueEndpoints
+                                .take(40))
+    
+    analysis_results.update_bad_unique_endpoints_pick_40(badUniqueEndpointsPick40) 
+    
+    
+    """Listing the Top Twenty 404 Response Code Endpoints"""
+    badEndpointsCountPairTuple = (badRecords
+                              .map(lambda log: (log.endpoint, 1)))
+
+    badEndpointsSum = (badEndpointsCountPairTuple
+                    .reduceByKey(lambda a, b : a + b))
+
+    badEndpointsTop20 = (badEndpointsSum
+                        .takeOrdered(20, lambda s: -1 * s[1]))
+    
+    analysis_results.update_bad_endpoints_top_20(badEndpointsTop20) 
+    
+    """Listing the Top Twenty-five 404 Response Code Hosts"""
+    errHostsCountPairTuple = (badRecords
+                          .map(lambda log: (log.host, 1)))
+
+    errHostsSum = (errHostsCountPairTuple
+                .reduceByKey(lambda a, b : a + b))
+
+    errHostsTop25 = (errHostsSum
+                    .takeOrdered(25, lambda s: -1 * s[1]))
+    
+    analysis_results.update_err_hosts_top_25(errHostsTop25) 
+    
+    """Listing 404 Response Codes per Day"""
+    errDateCountPairTuple = (badRecords
+                         .map(lambda log: (log.date_time.day, 1)))
+
+    errDateSum = (errDateCountPairTuple
+                .reduceByKey(lambda a, b : a + b))
+
+    errDateSorted = (errDateSum
+                    .sortByKey()
+                    .cache())
+
+    errByDate = (errDateSorted.take(100))
+
+    analysis_results.update_err_by_date(errByDate) 
+
+    """Hourly 404 Response Codes"""
+    hourCountPairTuple = (badRecords
+                      .map(lambda log: (log.date_time.hour, 1)))
+
+    hourRecordsSum = (hourCountPairTuple
+                    .reduceByKey(lambda a, b : a + b))
+
+    hourRecordsSorted = (hourRecordsSum
+                        .sortByKey()
+                        .cache())
+
+    errHourList = (hourRecordsSorted
+                .take(24))
+    
+    analysis_results.update_err_hour_list(errHourList) 
+    
+
+if __name__ == "__main__":
     """
     Analyze the logs and return the results.
     """
     analysis_results = AnalysisResults()
 
-    # Count the number of accesses from each IP address
-    ip_address_access_count = logs.map(lambda line: parse_request_line(line)) \
-        .map(lambda line: (line[0], 1)) \
-        .reduceByKey(lambda a, b: a + b).collectAsMap()
-    for ip_address, count in ip_address_access_count.items():
-        analysis_results.update_ip_address_access_count(ip_address, count)
-
-    # Count the number of successful and failed requests for each IP address
-    ip_address_success_count = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2) \
-    .map(lambda line: (parse_request_line(line)[0], 1)) \
-    .reduceByKey(lambda a, b: a + b).collectAsMap()
-    ip_address_failure_count = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) != 2) \
-        .map(lambda line: (parse_request_line(line)[0], 1)) \
-        .reduceByKey(lambda a, b: a + b).collectAsMap()
-    for ip_address, count in ip_address_success_count.items():
-        analysis_results.update_ip_address_success_count(ip_address, count)
-    for ip_address, count in ip_address_failure_count.items():
-        analysis_results.update_ip_address_failure_count(ip_address, count)
-
-    # Count the number of successful and failed requests for each HTTP method
-    http_method_success_count = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2) \
-        .map(lambda line: (parse_request_line(line)[1]["method"], 1)) \
-        .reduceByKey(lambda a, b: a + b).collectAsMap()
-    http_method_failure_count = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) != 2) \
-        .map(lambda line: (parse_request_line(line)[1]["method"], 1)) \
-        .reduceByKey(lambda a, b: a + b).collectAsMap()
-    for method, count in http_method_success_count.items():
-        analysis_results.update_http_method_success_count(method, count)
-    for method, count in http_method_failure_count.items():
-        analysis_results.update_http_method_failure_count(method, count)
-
-    # Count the number of successful requests with a response time greater than 1 second
-    num_successful_requests_with_response_time = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2 and parse_request_line(line)[1]["response_size"] > 0) \
-        .map(lambda line: (parse_request_line(line)[0], parse_request_line(line)[1]["response_size"])) \
-        .reduceByKey(lambda a, b: a + b) \
-        .filter(lambda x: x[1] > 1000) \
-        .count()
-    analysis_results.update_num_successful_requests_with_response_time(num_successful_requests_with_response_time)
-
-    # Compute the total response time for all successful requests
-    total_response_time = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2 and parse_request_line(line)[1]["response_size"] > 0) \
-        .map(lambda line: parse_request_line(line)[1]["response_size"]) \
-        .reduce(lambda a, b: a + b, 0)
-    analysis_results.update_total_response_time(total_response_time)
-
-    # Count the number of requests, successful requests, failed requests, HTTP codes, and HTTP methods
-    analysis_results.update_num_requests(logs.count())
-    analysis_results.update_num_successful_requests(logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2).count())
-    analysis_results.update_num_failed_requests(logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) != 2).count())
-    analysis_results.update_http_codes(logs.map(lambda line: parse_request_line(line)[1]["status_code"]).distinct().collect())
-    analysis_results.update_http_methods(logs.map(lambda line: parse_request_line(line)[1]["method"]).distinct().collect())
-
-    # Calculate the average response time for successful requests
-    avg_response_time = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2 and parse_request_line(line)[1]["response_size"] > 0).map(lambda line: parse_request_line(line)[1]["response_time"]).reduce(lambda a, b: a + b, 0) / logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2 and parse_request_line(line)[1]["response_size"] > 0).count()
-    analysis_results.update_avg_response_time(avg_response_time)
-
-    # Calculate the percentage of successful requests
-    percentage_successful_requests = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) == 2).count() / logs.count() * 100
-    analysis_results.update_percentage_successful_requests(percentage_successful_requests)
-
-    # Calculate the percentage of failed requests
-    percentage_failed_requests = logs.filter(lambda line: int(parse_request_line(line)[1]["status_code"] / 100) != 2).count() / logs.count() * 100
-    analysis_results.update_percentage_failed_requests(percentage_failed_requests)
-
-    return analysis_results
-
-if __name__ == "__main__":
-    spark = SparkSession.builder.appName("LogAnalysis").getOrCreate()
-
-    logs = spark.sparkContext.textFile("hdfs:///user/logs/access.log").collect()
-
-    analysis_results = analyze_logs(logs)
-    row_key = None
+    sc = create_spark_context(app_name='LogsWebServer')
     
-    put_row_to_hbase(row_key, analysis_results)
+    parsed_logs, access_logs, failed_logs = parseLogs(sc, 'hdfs://path/to/logfile', analysis_results)
 
-    spark.stop()
+    analyze_sample(access_logs, analysis_results)
+    analyze_logs(access_logs, analysis_results)
+    exploring_404_res(access_logs, analysis_results)
+
+    # Process data by partition and write results to HBase
+    put_row_to_hbase(None, analysis_results)
+
+    sc.stop()

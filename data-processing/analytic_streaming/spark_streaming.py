@@ -1,12 +1,25 @@
 import yaml
+import happybase
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import split, regexp_extract, col, window
+from pyspark.sql.functions import split, regexp_extract, col, window, count
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from pyspark.sql.window import Window
 
-with open('../config/config.yml', 'r') as f:
-    cfg = yaml.safe_load(f)
+def read_config():
+    with open('../config/config.yml', 'r') as f:
+        return yaml.safe_load(f)
+    
 
-def process_web_logs(spark):
+def create_spark_session(app_name, log_level):
+    """
+    Tạo một SparkSession với các cấu hình đã chỉ định.
+    """
+    spark = SparkSession.builder.appName(app_name).getOrCreate()
+    spark.sparkContext.setLogLevel(log_level)
+    return spark
+
+
+def process_web_logs(spark, kafka_config, hbase_config):
     # Define the schema for the web logs
     log_schema = StructType([
         StructField("host", StringType(), True),
@@ -24,8 +37,8 @@ def process_web_logs(spark):
     kafka_df = spark \
         .readStream \
         .format("kafka") \
-        .option("kafka.bootstrap.servers", cfg['kafka']['broker_url']) \
-        .option("subscribe", cfg['kafka']['topic_name']) \
+        .option("kafka.bootstrap.servers", kafka_config['broker_url']) \
+        .option("subscribe", kafka_config['topic_name']) \
         .option("startingOffsets", "earliest") \
         .load()
 
@@ -40,19 +53,19 @@ def process_web_logs(spark):
     # Filter out records with missing values
     log_df = log_df.filter(col("host").isNotNull())
     
-    # Create the view to run queries against
-    log_df.createOrReplaceTempView("web_logs")
+    # Define the sliding window
+    window = Window.partitionBy("endpoint").orderBy(col("date_time")).rangeBetween(-600, 0)
 
     # Compute statistics over a sliding window
-    windowed_counts = spark.sql("""
-        SELECT endpoint, window(date_time, "10 minutes").start AS window_start, count(*) AS view_count
-        FROM web_logs
-        GROUP BY endpoint, window(date_time, "10 minutes")
-    """)
+    windowed_counts = log_df \
+        .groupBy("endpoint", window.alias("window")) \
+        .agg(count("*").alias("view_count"), \
+            min(col("date_time")).alias("window_start"), \
+            max(col("date_time")).alias("window_end"))
 
     # Write the results out to HBase
-    hbase_url = cfg['hbase']['host'] + ":" + cfg['hbase']['port']
-    hbase_table = cfg['hbase']['table_name']
+    hbase_url = hbase_config['host'] + ":" + hbase_config['port']
+    hbase_table = hbase_config['table_name']
     hbase_columns = {"cf": "view_count"}
     hbase_config = {
         "hbase.zookeeper.quorum": hbase_url,
@@ -72,7 +85,6 @@ def write_to_hbase(df, epoch_id, table_name, column_family_mapping, config):
     """
     Write a batch DataFrame to an HBase table.
     """
-    import happybase
     # Convert the DataFrame to a list of tuples that can be written to HBase
     row_list = df \
         .rdd \
@@ -90,13 +102,16 @@ def write_to_hbase(df, epoch_id, table_name, column_family_mapping, config):
 
 
 if __name__ == "__main__":
+    config = read_config()
+    spark_config = config['spark']
+    kafka_config = config['kafka']
+    hbase_config = config['hbase']
+
     # Create a SparkSession
-    spark = SparkSession.builder.appName("WebLogsStreaming").getOrCreate()
-    # Set the log level to reduce the amount of output printed
-    spark.sparkContext.setLogLevel(cfg['spark']['log_level'])
+    spark = create_spark_session("WebLogsStreaming", spark_config['log_level'])
 
     # Process the web logs
-    process_web_logs(spark)
+    process_web_logs(spark, kafka_config, hbase_config)
 
     # Stop the SparkSession
     spark.stop()

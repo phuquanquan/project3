@@ -25,11 +25,4 @@ hbase:
   port: 9090
   table_name: web_logs_summary
   column_family: logs
-
-# Log files configuration
-log_files:
-  dir_path: /project3/data_processing/log_files/NASA_access_log_Jul95.gz
-
-# Processed data configuration
-processed_data:
-  dir_path: /project3/data_processing/processed_data
+  cf_analysis_results: analysis_results
