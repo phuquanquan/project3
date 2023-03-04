@@ -5,17 +5,26 @@ from pyspark.sql.functions import split, regexp_extract, col, window, count
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.window import Window
 
-def read_config():
-    with open('../config/config.yml', 'r') as f:
-        return yaml.safe_load(f)
+with open('../config/config.yml', 'r') as f:
+    cfg = yaml.safe_load(f)
+
+# Spark config
+spark_config = cfg['spark']
+SPARK_APP_NAME = spark_config['app_name']
+SPARK_MASTER = spark_config['master']
+SPARK_LOG_LEVEL = spark_config['log_level']
+SPARK_BATCH_INTERVAL = spark_config['batch_interval']
     
 
-def create_spark_session(app_name, log_level):
+def create_spark_context(app_name=SPARK_APP_NAME, master=SPARK_MASTER, log_level=SPARK_LOG_LEVEL, batch_interval=SPARK_BATCH_INTERVAL):
     """
-    Tạo một SparkSession với các cấu hình đã chỉ định.
+    Create a new SparkContext with the given app name, master URL, log level, and batch interval.
     """
-    spark = SparkSession.builder.appName(app_name).getOrCreate()
-    spark.sparkContext.setLogLevel(log_level)
+    conf = SparkConf().setAppName(app_name).setMaster(master)
+    sc = SparkContext.getOrCreate(conf=conf)
+    sc.setLogLevel(log_level)
+    spark = SparkSession(sc)
+    spark.conf.set("spark.sql.streaming.pollingInterval", batch_interval)
     return spark
 
 
@@ -102,13 +111,8 @@ def write_to_hbase(df, epoch_id, table_name, column_family_mapping, config):
 
 
 if __name__ == "__main__":
-    config = read_config()
-    spark_config = config['spark']
-    kafka_config = config['kafka']
-    hbase_config = config['hbase']
-
     # Create a SparkSession
-    spark = create_spark_session("WebLogsStreaming", spark_config['log_level'])
+    spark = create_spark_session()
 
     # Process the web logs
     process_web_logs(spark, kafka_config, hbase_config)

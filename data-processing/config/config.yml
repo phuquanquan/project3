@@ -8,13 +8,14 @@ hdfs:
 kafka:
   broker_url: localhost:9092
   topic_name: web_logging
-  compression_type = "gzip"
+  compression_type : "gzip"
   batch_size: 16*1024
   linger_ms: 10
   acks: 1
 
 # Spark configuration
 spark:
+  app_name: LogsWebServer
   master: local[*]
   log_level: WARN
   batch_interval: 10
@@ -24,5 +25,4 @@ hbase:
   host: localhost
   port: 9090
   table_name: web_logs_summary
-  column_family: logs
   cf_analysis_results: analysis_results

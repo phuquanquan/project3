@@ -69,7 +69,8 @@ if __name__ == "__main__":
         "retry_backoff_ms": 500,
         "metadata_max_age_ms": 300000,
         "max_block_ms": 60000,
-        "max_request_attempts": 3
+        "retry_backoff_ms": 500,
+        "buffer_memory": 33554432
     }
 
     producer = KafkaProducer(**kafka_config)

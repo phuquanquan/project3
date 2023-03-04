@@ -7,24 +7,37 @@ from analysis_results import AnalysisResults
 with open('../config/config.yml', 'r') as f:
     cfg =  yaml.safe_load(f)
 
+# Hbase config
+HDFS_PATH = f"hdfs://{cfg['hdfs']['host']}:{cfg['hdfs']['port']}" + cfg['hdfs']['path']
+
+# Hbase_config
 hbase_config = cfg['hbase']
-# Define constants
 HBASE_TABLE_NAME = hbase_config['table_name']
 HBASE_HOST = hbase_config['host']
 HBASE_PORT = hbase_config['port']
 CF_ANALYSIS_RESULTS = hbase_config['cf_analysis_results']
 
-    # Create a connection to HBase
+# Spark config
+spark_config = cfg['spark']
+SPARK_APP_NAME = spark_config['app_name']
+SPARK_MASTER = spark_config['master']
+SPARK_LOG_LEVEL = spark_config['log_level']
+SPARK_BATCH_INTERVAL = spark_config['batch_interval']
+
+# Create a connection to HBase
 connection = happybase.Connection(HBASE_HOST, port=HBASE_PORT)
 
 
-def create_spark_context(app_name='MyAppName', master='local[*]'):
+def create_spark_context(app_name=SPARK_APP_NAME, master=SPARK_MASTER, log_level=SPARK_LOG_LEVEL, batch_interval=SPARK_BATCH_INTERVAL):
     """
-    Create a new SparkContext with the given app name and master URL.
+    Create a new SparkContext with the given app name, master URL, log level, and batch interval.
     """
     conf = SparkConf().setAppName(app_name).setMaster(master)
     sc = SparkContext.getOrCreate(conf=conf)
-    return sc
+    sc.setLogLevel(log_level)
+    spark = SparkSession(sc)
+    spark.conf.set("spark.sql.streaming.pollingInterval", batch_interval)
+    return spark
 
 
 def put_row_to_hbase(row_key, analysis_results):
@@ -250,9 +263,9 @@ if __name__ == "__main__":
     """
     analysis_results = AnalysisResults()
 
-    sc = create_spark_context(app_name='LogsWebServer')
+    spark = create_spark_context()
     
-    parsed_logs, access_logs, failed_logs = parseLogs(sc, 'hdfs://path/to/logfile', analysis_results)
+    parsed_logs, access_logs, failed_logs = parseLogs(spark, HDFS_PATH, analysis_results)
 
     analyze_sample(access_logs, analysis_results)
     analyze_logs(access_logs, analysis_results)
@@ -261,4 +274,4 @@ if __name__ == "__main__":
     # Process data by partition and write results to HBase
     put_row_to_hbase(None, analysis_results)
 
-    sc.stop()
+    spark.stop()
