@@ -1,27 +1,19 @@
-import React, { useState, useEffect } from 'react';
-// import axios from 'axios';
+import React from 'react';
+import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-
-// function App() {
-//   const [message, setMessage] = useState('');
-
-//   useEffect(() => {
-//     axios.get('http://localhost:5000/api')
-//       .then(response => setMessage(response.data.message))
-//       .catch(error => console.log(error));
-//   }, []);
-
-//   return (
-//     <div>
-//       <h1>{message}</h1>
-//     </div>
-//   );
-// }
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 
 function App() {
   return (
     <div className="App">
-      <Dashboard />
+      <Router>
+        <Navbar />
+        <Switch>
+          <Route exact path="/" component={Dashboard} />
+        </Switch>
+        <Footer />
+      </Router>
     </div>
   );
 }

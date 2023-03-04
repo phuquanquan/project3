@@ -1,0 +1,87 @@
+/* Style the pie chart */
+.piechart {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;/* Đặt chiều rộng và chiều cao cho PieChart */
+    .PieChart {
+      width: 100%;
+      height: 400px;
+    }
+    
+    /* Tùy chỉnh kiểu chữ cho tiêu đề */
+    .PieChart .chart-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    /* Tùy chỉnh kích thước của các phần tử trên biểu đồ */
+    .PieChart .chart-wrapper {
+      position: relative;
+    }
+    
+    .PieChart .chart-wrapper canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    
+    .PieChart .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      padding: 0;
+      list-style: none;
+    }
+    
+    .PieChart .chart-legend li {
+      display: flex;
+      align-items: center;
+      margin-right: 20px;
+      margin-bottom: 10px;
+    }
+    
+    .PieChart .chart-legend li .legend-color {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      border-radius: 50%;
+    }
+    
+    /* Tùy chỉnh các màu sắc trên biểu đồ */
+    .PieChart .chart-colors {
+      display: flex;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    
+    .PieChart .chart-colors li {
+      display: flex;
+      align-items: center;
+      margin-right: 20px;
+      margin-bottom: 10px;
+    }
+    
+    .PieChart .chart-colors li .color-box {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      border-radius: 50%;
+    }
+    
+    margin: 2rem 0;
+  }
+  
+  .piechart__title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+  }
+  
+  .piechart__chart {
+    width: 100%;
+    height: 300px;
+    margin-top: 1rem;
+  }
+  

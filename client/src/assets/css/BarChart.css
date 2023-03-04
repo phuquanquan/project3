@@ -1,0 +1,34 @@
+/* Set max-width of chart container */
+.chart-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Set background color of chart */
+.chart {
+  background-color: white;
+}
+
+/* Set font size and color of chart title */
+.chart-title {
+  font-size: 18px;
+  color: black;
+}
+
+/* Set font size and color of axis labels */
+.axis-label {
+  font-size: 14px;
+  color: black;
+}
+
+/* Set font size and color of legend */
+.legend {
+  font-size: 14px;
+  color: black;
+}
+
+/* Set font size and color of data labels */
+.data-label {
+  font-size: 14px;
+  color: black;
+}

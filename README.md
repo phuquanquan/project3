@@ -5,16 +5,27 @@ Account chatgpt:
 project3/
 ├── backend/
 │   ├── api/
+│   │   └── hbase_api.yml
 │   ├── models/
+│   │   └── hbase.yml
 │   └── utils/
+│   │   └── main.yml
 ├── frontend/
 │   ├── public/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── Dashboard.js
+│   │   │   ├── Footer.js
+│   │   │   └── Navber.js
 │   │   ├── assets/
+│   │   │   ├── picture/
+│   │   │   └── css/
 │   │   ├── reducers/
+│   │   │   └── logReducers.py
 │   │   ├── services/
+│   │   │   └── logService.py
 │   │   ├── store/
+│   │   │   └── index.py
 │   │   ├── App.js
 │   │   ├── index.js
 │   │   ├── store.js
@@ -25,6 +36,8 @@ project3/
 │   ├── yarn.lock
 │   └── ...
 ├── data_processing/
+│   ├── config/
+│   │   └── config.yml
 │   ├── log_producer/
 │   │   ├── __init__.py
 │   │   └── kafka_producer.py
