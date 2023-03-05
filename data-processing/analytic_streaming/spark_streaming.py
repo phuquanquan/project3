@@ -2,120 +2,92 @@ import yaml
 import happybase
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import split, regexp_extract, col, window, count
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-from pyspark.sql.window import Window
-
-with open('../config/config.yml', 'r') as f:
-    cfg = yaml.safe_load(f)
-
-# Spark config
-spark_config = cfg['spark']
-SPARK_APP_NAME = spark_config['app_name']
-SPARK_MASTER = spark_config['master']
-SPARK_LOG_LEVEL = spark_config['log_level']
-SPARK_BATCH_INTERVAL = spark_config['batch_interval']
-    
-
-def create_spark_context(app_name=SPARK_APP_NAME, master=SPARK_MASTER, log_level=SPARK_LOG_LEVEL, batch_interval=SPARK_BATCH_INTERVAL):
-    """
-    Create a new SparkContext with the given app name, master URL, log level, and batch interval.
-    """
-    conf = SparkConf().setAppName(app_name).setMaster(master)
-    sc = SparkContext.getOrCreate(conf=conf)
-    sc.setLogLevel(log_level)
-    spark = SparkSession(sc)
-    spark.conf.set("spark.sql.streaming.pollingInterval", batch_interval)
-    return spark
+from pyspark.sql.types import IntegerType
+from pyspark.conf import SparkConf
+from pyspark.context import SparkContext
 
 
-def process_web_logs(spark, kafka_config, hbase_config):
-    # Define the schema for the web logs
-    log_schema = StructType([
-        StructField("host", StringType(), True),
-        StructField("client_identd", StringType(), True),
-        StructField("user_id", StringType(), True),
-        StructField("date_time", StringType(), True),
-        StructField("method", StringType(), True),
-        StructField("endpoint", StringType(), True),
-        StructField("protocol", StringType(), True),
-        StructField("response_code", IntegerType(), True),
-        StructField("content_size", IntegerType(), True)
-    ])
+class SparkStreaming:
+    def __init__(self, cfg):
+        self.spark_config = cfg['spark']
+        self.kafka_config = cfg['kafka']
+        self.hbase_config = cfg['hbase']
 
-    # Create the initial DataFrame representing the stream of web logs from Kafka
-    kafka_df = spark \
-        .readStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", kafka_config['broker_url']) \
-        .option("subscribe", kafka_config['topic_name']) \
-        .option("startingOffsets", "earliest") \
-        .load()
+    def create_spark_context(self):
+        """
+        Create a new SparkContext with the given app name, master URL, log level, and batch interval.
+        """
+        conf = SparkConf().setAppName(self.spark_config['app_name']).setMaster(self.spark_config['master'])
+        sc = SparkContext.getOrCreate(conf=conf)
+        sc.setLogLevel(self.spark_config['log_level'])
+        spark = SparkSession(sc)
+        spark.conf.set("spark.sql.streaming.pollingInterval", self.spark_config['batch_interval'])
+        return spark
 
-    # Convert the value of each message to a string and extract the fields
-    value_df = kafka_df.selectExpr("CAST(value AS STRING)")
-    log_df = value_df.select(regexp_extract('value', r'^([^\s]+\s)', 1).alias('host'),
-                              regexp_extract('value', r'^.*\[(\d\d/\w{3}/\d{4}:\d{2}:\d{2}:\d{2} -\d{4})]', 1).alias('date_time'),
-                              regexp_extract('value', r'^.*"\w+\s+([^\s]+)\s+HTTP.*"', 1).alias('endpoint'),
-                              regexp_extract('value', r'^.*"\s+([^\s]+)', 1).cast('integer').alias('response_code'),
-                              regexp_extract('value', r'^.*\s+(\d+)$', 1).cast('integer').alias('content_size'))
+    @staticmethod
+    def write_to_hbase(df, epoch_id, table_name, column_family_mapping, config):
+        """
+        Write a batch DataFrame to an HBase table.
+        """
+        # Convert the DataFrame to a list of tuples that can be written to HBase
+        row_list = df \
+            .rdd \
+            .map(lambda row: (
+                row['endpoint'].encode('utf-8'),
+                {column_family_mapping['cf'].encode('utf-8'): str(row['view_count']).encode('utf-8')}
+            )) \
+            .collect()
 
-    # Filter out records with missing values
-    log_df = log_df.filter(col("host").isNotNull())
-    
-    # Define the sliding window
-    window = Window.partitionBy("endpoint").orderBy(col("date_time")).rangeBetween(-600, 0)
+        # Write the rows to HBase
+        with happybase.Connection(**config) as connection:
+            table = connection.table(table_name)
+            for row in row_list:
+                table.put(row[0], row[1])
 
-    # Compute statistics over a sliding window
-    windowed_counts = log_df \
-        .groupBy("endpoint", window.alias("window")) \
-        .agg(count("*").alias("view_count"), \
-            min(col("date_time")).alias("window_start"), \
-            max(col("date_time")).alias("window_end"))
+    def process_web_logs(self):
+        # Create the initial DataFrame representing the stream of web logs from Kafka
+        kafka_df = self.spark \
+            .readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", self.kafka_config['broker_url']) \
+            .option("subscribe", self.kafka_config['topic_name']) \
+            .option("startingOffsets", "earliest") \
+            .load()
 
-    # Write the results out to HBase
-    hbase_url = hbase_config['host'] + ":" + hbase_config['port']
-    hbase_table = hbase_config['table_name']
-    hbase_columns = {"cf": "view_count"}
-    hbase_config = {
-        "hbase.zookeeper.quorum": hbase_url,
-        "hbase.mapred.outputtable": hbase_table,
-        "mapreduce.outputformat.class": "org.apache.hadoop.hbase.mapreduce.TableOutputFormat",
-        "mapreduce.job.output.key.class": "org.apache.hadoop.hbase.io.ImmutableBytesWritable",
-        "mapreduce.job.output.value.class": "org.apache.hadoop.io.Writable"
-    }
+        # Convert the value of each message to a string and extract the fields
+        value_df = kafka_df.selectExpr("CAST(value AS STRING)")
+        log_df = value_df.select(regexp_extract('value', r'^([^\s]+\s)', 1).alias('host'),
+                                  regexp_extract('value', r'^.*\[(\d\d/\w{3}/\d{4}:\d{2}:\d{2}:\d{2} -\d{4})]', 1).alias('date_time'),
+                                  regexp_extract('value',r'"(?:GET|POST|PUT|DELETE|HEAD) (.*?) HTTP', 1).alias('endpoint'),
+                                  regexp_extract('value', r'\s(\d{3})\s', 1).cast(IntegerType()).alias('response_code'),
+                                  regexp_extract('value', r'\s(\d+)$', 1).cast(IntegerType()).alias('content_size'))
+        
+         # Split the date_time column into separate date and time columns
+        log_df = log_df.withColumn('date', split(col('date_time'), ':')[0])
+        log_df = log_df.withColumn('time', split(col('date_time'), ':')[1])
 
-    windowed_counts \
-        .writeStream \
-        .foreachBatch(lambda batch_df, batch_id: write_to_hbase(batch_df, batch_id, hbase_table, hbase_columns, hbase_config)) \
-        .start() \
-        .awaitTermination()
+        # Calculate the number of views per endpoint for each batch interval
+        windowed_counts = log_df \
+            .groupBy(
+                window(col("date_time"), self.spark_config['batch_interval'], self.spark_config['slide_interval']),
+                col('endpoint')
+            ) \
+            .agg(count('*').alias('view_count'))
 
-def write_to_hbase(df, epoch_id, table_name, column_family_mapping, config):
-    """
-    Write a batch DataFrame to an HBase table.
-    """
-    # Convert the DataFrame to a list of tuples that can be written to HBase
-    row_list = df \
-        .rdd \
-        .map(lambda row: (
-            row['endpoint'].encode('utf-8'),
-            {column_family_mapping['cf'].encode('utf-8'): str(row['view_count']).encode('utf-8')}
-        )) \
-        .collect()
+        # Write the results to HBase
+        windowed_counts.writeStream \
+            .foreachBatch(lambda df, epoch_id: self.write_to_hbase(df, epoch_id, self.hbase_config['table_name'],
+                                                                self.hbase_config['column_family_mapping'],
+                                                                self.hbase_config['connection'])) \
+            .start() \
+            .awaitTermination()
 
-    # Write the rows to HBase
-    with happybase.Connection(**config) as connection:
-        table = connection.table(table_name)
-        for row in row_list:
-            table.put(row[0], row[1])
+    def run(self):
+        self.spark = self.create_spark_context()
+        self.process_web_logs()
 
-
-if __name__ == "__main__":
-    # Create a SparkSession
-    spark = create_spark_session()
-
-    # Process the web logs
-    process_web_logs(spark, kafka_config, hbase_config)
-
-    # Stop the SparkSession
-    spark.stop()
+if __name__ == '__main__':
+    with open('../config/config.yml', 'r') as f:
+        cfg = yaml.safe_load(f)
+    ss = SparkStreaming(cfg)
+    ss.run()

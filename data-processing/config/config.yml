@@ -18,7 +18,6 @@ spark:
   app_name: LogsWebServer
   master: local[*]
   log_level: WARN
-  batch_interval: 10
 
 # HBase configuration
 hbase:
