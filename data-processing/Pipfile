@@ -6,9 +6,8 @@ name = "pypi"
 [packages]
 pyspark = "*"
 happybase = "*"
-kafka-python = "*"
 pyyaml = "*"
-kafka = "*"
+kafka-python = "*"
 
 [dev-packages]
 

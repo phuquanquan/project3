@@ -2,6 +2,7 @@ import json
 import random
 import time
 import ipaddress
+import gzip
 from kafka import KafkaProducer
 import yaml
 
@@ -59,38 +60,54 @@ class KafkaLogProducer:
         response_code = random.choice([200, 201, 202, 301, 302, 400, 401, 403, 404, 500, 503])
         content_size = random.randint(1024, 10240)
 
-        log = {
-            "host": host,
-            "identd": client_identd,
-            "user_id": user_id,
-            "date_time": date_time,
-            "method": method,
-            "endpoint": endpoint,
-            "protocol": protocol,
-            "response_code": response_code,
-            "content_size": content_size,
-            "source": "web_server_logs"
-        }
+        log = f"{host} {client_identd } {user_id} {date_time} \"{method} {endpoint} {protocol}\" {response_code} {content_size}"
+        # {
+        #     "host": host,
+        #     "identd": client_identd,
+        #     "user_id": user_id,
+        #     "date_time": date_time,
+        #     "method": method,
+        #     "endpoint": endpoint,
+        #     "protocol": protocol,
+        #     "response_code": response_code,
+        #     "content_size": content_size,
+        #     "source": "web_server_logs"
+        # }
 
         return log
 
-    def send_message(self):
-        log = KafkaLogProducer.create_log_message()
-
-        try:
-            self.producer.send(self.topic_name, value=log)
-        except Exception as e:
-            print(f"Error: {str(e)}")
-
-        time.sleep(0.1)
-
-    def run(self):
+    def send_message_with_log_create(self):
         while True:
-            self.send_message()
+            log = KafkaLogProducer.create_log_message()
+
+            try:
+                self.producer.send(self.topic_name, value=log)
+            except Exception as e:
+                print(f"Error: {str(e)}")
+
             time.sleep(0.1)
+
+    def send_message_with_log_in_file(self):
+        with gzip.open("logs_web.gz", "rb") as f:
+            for line in f:
+                self.producer.send(self.topic_name, value=line.decode("utf-8"))
+        self.producer.flush()
+
+    def run(self, model):
+        if model == "create_logs":
+            self.send_message_with_log_create()
+        elif model == "logs_from_file":
+            self.send_message_with_log_in_file()
+        else:
+            return
 
 if __name__ == "__main__":
     with open('../config/config.yml', 'r') as f:
         cfg = yaml.safe_load(f)
     producer = KafkaLogProducer(cfg)
-    producer.run()
+
+    # Write logs to topic
+    # model == "create_logs" nếu muốn tự tạo logs random
+    # model == "logs_from_file" nếu muốn sử dụng logs đã có sẵn trong file
+    model = "logs_from_file"
+    producer.run(model)
