@@ -13,23 +13,23 @@ class KafkaLogProducer:
         self.batch_size = cfg['kafka']['batch_size']
         self.linger_ms = cfg['kafka']['linger_ms']
         self.acks = cfg['kafka']['acks']
+        self.buffer_memory = cfg['kafka']['buffer_memory']
 
-        self.producer = KafkaProducer(
-            "bootstrap_servers": [self.broker_url],
-            "value_serializer": lambda x: json.dumps(x).encode('utf-8'),
-            "acks": self.acks,
-            "retries": 3,
-            "compression_type": self.compression_type,
-            "max_in_flight_requests_per_connection": 5,
-            "batch_size": self.batch_size,
-            "linger_ms": self.linger_ms,
-            "max_request_size": 1048576,
-            "request_timeout_ms": 30000,
-            "retry_backoff_ms": 500,
-            "metadata_max_age_ms": 300000,
-            "max_block_ms": 60000,
-            "retry_backoff_ms": 500,
-            "buffer_memory": 33554432
+        self.producer = KafkaProducer (
+            bootstrap_servers= [self.broker_url],
+            value_serializer= lambda x: json.dumps(x).encode('utf-8'),
+            acks= self.acks,
+            retries= 3,
+            compression_type= self.compression_type,
+            max_in_flight_requests_per_connection= 5,
+            batch_size= self.batch_size,
+            linger_ms= self.linger_ms,
+            max_request_size= 1048576,
+            request_timeout_ms= 30000,
+            retry_backoff_ms= 500,
+            metadata_max_age_ms= 300000,
+            max_block_ms= 60000,
+            buffer_memory= self.buffer_memory,
         )
 
     @staticmethod

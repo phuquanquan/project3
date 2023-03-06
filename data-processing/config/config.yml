@@ -9,9 +9,10 @@ kafka:
   broker_url: localhost:9092
   topic_name: web_logging
   compression_type : "gzip"
-  batch_size: 16*1024
+  batch_size: 16384
   linger_ms: 10
   acks: 1
+  buffer_memory: 33554432
 
 # Spark configuration
 spark:
